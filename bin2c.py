@@ -55,16 +55,26 @@ def md5sum_of_file(fname):
     return hash_md5.hexdigest()
 
 
-def output_bin(in_name, h, c):
+def output_bin(in_name, h, c, make_str):
     basename = os.path.basename(in_name)
     symbol_name = re.sub(r"\W", "_", basename)
     i = open(in_name, "rb")
 
-    h.write("// %s, md5sum %s\n" % (in_name, md5sum_of_file(in_name)))
-    h.write("extern const unsigned char {}_data[];\n".format(symbol_name))
-    h.write("extern const size_t {}_size;\n".format(symbol_name))
+    if make_str:
+        suffix = 'str'
+        output_type = "const char"
+    else:
+        output_type = "const unsigned char"
+        suffix = 'data'
 
-    c.write("const unsigned char {}_data[] = {{\n".format(symbol_name))
+    h.write("// %s, md5sum %s\n" % (in_name, md5sum_of_file(in_name)))
+    h.write("extern %s %s_%s[];\n" % (output_type, symbol_name, suffix))
+    h.write("extern const size_t %s_bytes;\n" % symbol_name)
+
+    if make_str:
+        c.write("%s %s_%s[] = {\n" % (output_type, symbol_name, suffix))
+    else:
+        c.write("%s %s_%s[] = {\n" % (output_type, symbol_name, suffix))
     while True:
         block = i.read(16)
         if len(block) < 16:
@@ -82,12 +92,23 @@ def output_bin(in_name, h, c):
                 "0x{:02X}, 0x{:02X}, 0x{:02X}, 0x{:02X}, "
                 "0x{:02X}, 0x{:02X}, 0x{:02X}, 0x{:02X},\n"
                 .format(*struct.unpack("BBBBBBBBBBBBBBBB", block)))
+
+    if make_str:
+        c.write("\t0x00\n")
+
     i.close()
     c.write("};\n\n")
-    c.write("const size_t {0}_size = sizeof({0}_data);\n".format(symbol_name))
+    c.write("const size_t {0}_bytes = sizeof({0}_{1});\n"
+            .format(symbol_name, suffix))
 
 
-def output_set(out_name, in_names):
+def output_set(out_name, in_names, make_str=False):
+    """
+    out_name:  base of .c and .h to write
+    in_names:  iterable of files to encode
+    make_str:  set to true to null terminate binary encoded files
+               (size variable is total binary size, not strlen!)
+    """
     h = open(out_name + ".h", "w")
     hname = re.sub(r"\W", "_", out_name).upper()
     h.write(header.format(year=CURRENT_YEAR))    
@@ -98,7 +119,7 @@ def output_set(out_name, in_names):
     c.write(header.format(year=CURRENT_YEAR))
 
     for in_name in in_names:
-        output_bin(in_name, h, c)
+        output_bin(in_name, h, c, make_str)
 
     h.write("\n#endif\n")
     h.close()
